@@ -677,21 +677,23 @@ def ping_sitemap():
 # HTML GALLERY BUILDER
 # ============================================================
 
-def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intro_text):
+def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intro_text, used_image_ids=None):
     pretty_kw  = title_case_keyword(keyword)
     html_parts = []
+    used_image_ids = used_image_ids or set()
 
     if intro_text:
         pretty_kw_bold  = f"<strong>{pretty_kw}</strong>"
         intro_formatted = intro_text.replace(pretty_kw, pretty_kw_bold)
         html_parts.append(
-            f'<p style="font-size:20px;line-height:1.8;margin-bottom:28px;color:#333;">'
-            f'{intro_formatted}'
-            f'</p>'
+            f'<p style="font-size:20px;line-height:1.8;margin-bottom:28px;color:#333;">'            f'{intro_formatted}'            f'</p>'
         )
 
-    pool = list(all_media)
-    random.shuffle(pool)
+    unused = [m for m in all_media if str(m.get("id")) not in used_image_ids]
+    used   = [m for m in all_media if str(m.get("id")) in used_image_ids]
+    random.shuffle(unused)
+    random.shuffle(used)
+    pool = unused + used
 
     needed = images_per_heading * len(subheadings)
     while len(pool) < needed:
@@ -699,6 +701,7 @@ def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intr
         random.shuffle(extra)
         pool.extend(extra)
 
+    new_ids_used = []
     cursor = 0
     for sub in subheadings:
         chunk   = pool[cursor: cursor + images_per_heading]
@@ -707,21 +710,18 @@ def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intr
         html_parts.append(f'<h2>{sub}</h2>')
 
         for item in chunk:
-            url = item.get("source_url", "")
-            alt = item.get("alt_text") or pretty_kw
+            url    = item.get("source_url", "")
+            alt    = item.get("alt_text") or pretty_kw
+            img_id = str(item.get("id", ""))
+            if img_id:
+                new_ids_used.append(img_id)
 
             html_parts.append(
-                f'<figure class="wp-block-image size-full" style="margin-bottom:20px;text-align:center;">'
-                f'<img src="{url}" alt="{alt}" style="width:100%;border-radius:8px;" />'
-                f'</figure>'
+                f'<figure class="wp-block-image size-full" style="margin-bottom:20px;text-align:center;">'                f'<img src="{url}" alt="{alt}" style="width:100%;border-radius:8px;" />'                f'</figure>'
             )
 
-    return "\n".join(html_parts)
+    return "\n".join(html_parts), new_ids_used
 
-
-# ============================================================
-# AUTO TAGS
-# ============================================================
 
 def get_or_create_tags(keyword, subheadings):
     """Generate tags from keyword + subheadings and create them in WordPress if needed."""
