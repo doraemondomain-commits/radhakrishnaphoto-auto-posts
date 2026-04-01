@@ -666,6 +666,24 @@ def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intr
 # CREATE WORDPRESS POST
 # ============================================================
 
+def update_yoast_meta(post_id, focus_kw, meta_desc):
+    """Update Yoast SEO focus keyword and meta description via a separate REST call."""
+    data = {
+        "meta": {
+            "_yoast_wpseo_focuskw":  focus_kw,
+            "_yoast_wpseo_metadesc": meta_desc,
+        }
+    }
+    try:
+        r = requests.post(f"{WP_URL}/posts/{post_id}", json=data, auth=AUTH, timeout=30)
+        if r.status_code in (200, 201):
+            log(f"  ✓ Yoast meta updated (focus_kw='{focus_kw}')")
+        else:
+            log(f"  ⚠ Yoast meta update failed: {r.status_code} — {r.text[:200]}")
+    except Exception as e:
+        log(f"  ⚠ Yoast meta update error: {e}")
+
+
 def create_wp_post(title, slug, content, category_id, focus_kw, meta_desc):
     data = {
         "title":      title,
@@ -673,10 +691,6 @@ def create_wp_post(title, slug, content, category_id, focus_kw, meta_desc):
         "content":    content,
         "status":     POST_STATUS,
         "categories": [category_id],
-        "meta": {
-            "_yoast_wpseo_focuskw":  focus_kw,
-            "_yoast_wpseo_metadesc": meta_desc,
-        }
     }
     try:
         r      = requests.post(f"{WP_URL}/posts", json=data, auth=AUTH, timeout=30)
@@ -695,7 +709,14 @@ def create_wp_post(title, slug, content, category_id, focus_kw, meta_desc):
             )
             return None, ""
 
-        return result.get("id"), result.get("link", "")
+        post_id  = result.get("id")
+        post_url = result.get("link", "")
+
+        # Update Yoast SEO meta separately after post is created
+        if post_id:
+            update_yoast_meta(post_id, focus_kw, meta_desc)
+
+        return post_id, post_url
 
     except Exception as e:
         log(f"  ✗ WP post creation error: {e}")
