@@ -1,5 +1,5 @@
 """
-auto_posts.py — Fully Automatic WordPress Post Creator (v17)
+auto_posts.py — Fully Automatic WordPress Post Creator (v18)
 ============================================================
 Changes from v16:
   ✅ Removed Google Indexing API completely — sitemap handles indexing
@@ -53,6 +53,9 @@ SLUG_REMOVE_WORDS = {
 # --- Fallback category ---
 FALLBACK_CATEGORY = "Radha Krishna"
 
+# --- Sitemap ping ---
+SITEMAP_URL = "https://radhakrishnaphoto.in/sitemap_index.xml"
+
 # --- All content files ---
 KEYWORDS_FILE            = "keywords.txt"
 INTROS_FILE              = "intros.txt"
@@ -61,7 +64,8 @@ TITLE_TEMPLATES_FILE     = "title_templates.txt"
 SUBHEADING_FALLBACK_FILE = "subheading_fallbacks.txt"
 
 # --- Tracking files ---
-USED_KEYWORDS_FILE = "used_keywords.txt"
+USED_KEYWORDS_FILE  = "used_keywords.txt"
+USED_IMAGES_FILE    = "used_images.txt"
 LOG_FILE           = "logs/auto_posts.log"
 
 # --- Low keywords warning threshold ---
@@ -220,7 +224,7 @@ def build_telegram_summary(stats):
         lines.append("")
 
     lines.append("─────────────────────")
-    lines.append("<i>unityimage.com | Auto Posts v17</i>")
+    lines.append("<i>radhakrishnaphoto.in | Auto Posts v18</i>")
 
     return "\n".join(lines)
 
@@ -239,6 +243,22 @@ def load_used_keywords():
 def save_used_keyword(kw):
     with open(USED_KEYWORDS_FILE, "a", encoding="utf-8") as f:
         f.write(kw.strip().lower() + "\n")
+
+
+# ============================================================
+# USED IMAGES TRACKER
+# ============================================================
+
+def load_used_image_ids():
+    if not os.path.exists(USED_IMAGES_FILE):
+        return set()
+    with open(USED_IMAGES_FILE, "r", encoding="utf-8") as f:
+        return set(line.strip() for line in f if line.strip())
+
+def save_used_image_ids(ids):
+    with open(USED_IMAGES_FILE, "a", encoding="utf-8") as f:
+        for img_id in ids:
+            f.write(str(img_id) + "\n")
 
 
 # ============================================================
@@ -309,6 +329,21 @@ def collect_keywords(used_keywords):
 
     fresh = [kw for kw in unique if kw not in used_keywords and len(kw.split()) >= 3]
     log(f"  Total fresh keywords available: {len(fresh)}")
+
+    # Auto replenish: if running low, fetch deeper suggestions from existing suggestions
+    if len(fresh) <= LOW_KEYWORDS_THRESHOLD:
+        log("  ⚠ Keywords running low — auto-fetching deeper suggestions...")
+        extra_kws = []
+        for kw in fresh[:5]:
+            deeper = fetch_autocomplete(kw)
+            extra_kws.extend(deeper)
+            time.sleep(0.5)
+        for kw in extra_kws:
+            kw = kw.strip().lower()
+            if kw not in seen and kw not in used_keywords and len(kw.split()) >= 3:
+                seen.add(kw)
+                fresh.append(kw)
+        log(f"  After auto-replenish: {len(fresh)} fresh keywords available")
 
     check_keywords_low(len(fresh))
 
@@ -617,6 +652,28 @@ def fetch_all_wp_media():
 
 
 # ============================================================
+# SITEMAP PING
+# ============================================================
+
+def ping_sitemap():
+    """Ping Google and Bing with sitemap URL after each post."""
+    endpoints = [
+        f"https://www.google.com/ping?sitemap={SITEMAP_URL}",
+        f"https://www.bing.com/ping?sitemap={SITEMAP_URL}",
+    ]
+    for url in endpoints:
+        try:
+            r = requests.get(url, timeout=10)
+            engine = "Google" if "google" in url else "Bing"
+            if r.status_code == 200:
+                log(f"  ✓ Sitemap pinged: {engine}")
+            else:
+                log(f"  ⚠ Sitemap ping {engine} returned {r.status_code}")
+        except Exception as e:
+            log(f"  ⚠ Sitemap ping error: {e}")
+
+
+# ============================================================
 # HTML GALLERY BUILDER
 # ============================================================
 
@@ -663,6 +720,47 @@ def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intr
 
 
 # ============================================================
+# AUTO TAGS
+# ============================================================
+
+def get_or_create_tags(keyword, subheadings):
+    """Generate tags from keyword + subheadings and create them in WordPress if needed."""
+    tag_names = set()
+
+    # Add keyword itself and each word combo
+    tag_names.add(keyword.strip().lower())
+    words = keyword.strip().lower().split()
+    if len(words) >= 2:
+        tag_names.add(" ".join(words[:2]))
+    if len(words) >= 3:
+        tag_names.add(" ".join(words[:3]))
+
+    # Add subheadings as tags (max 4)
+    for sub in subheadings[:4]:
+        tag_names.add(sub.strip().lower())
+
+    tag_ids = []
+    for name in list(tag_names)[:7]:  # max 7 tags
+        try:
+            # Search if tag exists
+            r = requests.get(f"{WP_URL}/tags", params={"search": name, "_fields": "id,name"}, auth=AUTH, timeout=10)
+            results = r.json() if r.status_code == 200 else []
+            match = next((t for t in results if t["name"].lower() == name), None)
+            if match:
+                tag_ids.append(match["id"])
+            else:
+                # Create new tag
+                cr = requests.post(f"{WP_URL}/tags", json={"name": name}, auth=AUTH, timeout=10)
+                if cr.status_code in (200, 201):
+                    tag_ids.append(cr.json().get("id"))
+        except Exception as e:
+            log(f"  ⚠ Tag error for '{name}': {e}")
+
+    log(f"  ✓ Tags set: {len(tag_ids)} tags")
+    return tag_ids
+
+
+# ============================================================
 # CREATE WORDPRESS POST
 # ============================================================
 
@@ -684,7 +782,7 @@ def update_yoast_meta(post_id, focus_kw, meta_desc):
         log(f"  ⚠ Yoast meta update error: {e}")
 
 
-def create_wp_post(title, slug, content, category_id, focus_kw, meta_desc):
+def create_wp_post(title, slug, content, category_id, focus_kw, meta_desc, tag_ids=None, featured_image_id=None):
     data = {
         "title":      title,
         "slug":       slug,
@@ -692,6 +790,10 @@ def create_wp_post(title, slug, content, category_id, focus_kw, meta_desc):
         "status":     POST_STATUS,
         "categories": [category_id],
     }
+    if tag_ids:
+        data["tags"] = tag_ids
+    if featured_image_id:
+        data["featured_media"] = featured_image_id
     try:
         r      = requests.post(f"{WP_URL}/posts", json=data, auth=AUTH, timeout=30)
         result = r.json()
@@ -731,7 +833,7 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
     STATS.dry_run = dry_run
 
     log("=" * 60)
-    log(f"Auto Posts v17 | target={posts_to_create} posts | dry_run={dry_run}")
+    log(f"Auto Posts v18 | target={posts_to_create} posts | dry_run={dry_run}")
     log(f"Gap between posts: {POST_GAP_SECONDS}s")
     log("=" * 60)
 
@@ -792,6 +894,7 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
             for i in range(1, 500)
         ]
 
+    used_image_ids  = load_used_image_ids() if not dry_run else set()
     existing_titles = fetch_existing_titles() if not dry_run else set()
 
     # ── Main loop ─────────────────────────────────────────────
@@ -837,9 +940,16 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
         log(f"  Subheadings: {' | '.join(subheadings)}")
         log(f"  Meta Desc  : {meta_desc[:80]}...")
 
-        html_content = build_html_gallery(
-            subheadings, all_media, IMAGES_PER_HEADING, kw, intro
+        html_content, new_image_ids = build_html_gallery(
+            subheadings, all_media, IMAGES_PER_HEADING, kw, intro, used_image_ids
         )
+        # Pick featured image from first image used in this post
+        featured_id = None
+        if new_image_ids:
+            first_id = new_image_ids[0]
+            featured_media = next((m for m in all_media if str(m.get("id")) == first_id), None)
+            if featured_media:
+                featured_id = featured_media.get("id")
 
         if dry_run:
             log(f"  [DRY RUN] Would publish : '{title}'")
@@ -849,15 +959,17 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
 
             STATS.posts_created.append({
                 "title":        title,
-                "link":         f"https://unityimage.com/{slug}/",
+                "link":         f"https://radhakrishnaphoto.in/{slug}/",
                 "category":     cat_name,
                 "keyword":      kw,
                 "published_at": datetime.now().strftime("%d %b %Y %I:%M %p"),
             })
 
         else:
+            tag_ids = get_or_create_tags(kw, subheadings)
             post_id, post_link = create_wp_post(
-                title, slug, html_content, category_id, focus_kw, meta_desc
+                title, slug, html_content, category_id, focus_kw, meta_desc,
+                tag_ids=tag_ids, featured_image_id=featured_id
             )
 
             if post_id:
@@ -866,6 +978,12 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
                 log(f"  ✓ URL: {post_link}")
                 save_used_keyword(kw)
                 existing_titles.add(title.strip().lower())
+                # Save used image IDs to avoid repeating across posts
+                if new_image_ids:
+                    save_used_image_ids(new_image_ids)
+                    used_image_ids.update(new_image_ids)
+                # Ping Google and Bing sitemap
+                ping_sitemap()
 
                 STATS.posts_created.append({
                     "title":        title,
