@@ -415,7 +415,7 @@ def get_unique_title(kw, existing_titles):
 # ============================================================
 
 def generate_focus_keyword(kw):
-    return title_case_keyword(kw)
+    return kw.strip().lower()
 
 
 # ============================================================
@@ -428,9 +428,8 @@ def generate_intro(keyword):
         log("  ⚠ intros.txt empty or missing — using fallback")
         intros = ["Welcome to the best {topic} collection free in HD quality."]
 
-    pretty   = title_case_keyword(keyword)
     template = random.choice(intros)
-    intro    = template.replace("{topic}", pretty)
+    intro    = template.replace("{topic}", keyword.strip())
     log(f"  ✓ Intro generated ({len(intro)} chars)")
     return intro
 
@@ -445,9 +444,8 @@ def generate_meta_description(keyword):
         log("  ⚠ meta_descriptions.txt empty or missing — using fallback")
         descriptions = ["Download the best {topic} HD images free for Instagram and WhatsApp."]
 
-    pretty   = title_case_keyword(keyword)
     template = random.choice(descriptions)
-    meta     = template.replace("{topic}", pretty).strip()
+    meta     = template.replace("{topic}", keyword.strip()).strip()
 
     if len(meta) > 155:
         meta = meta[:152] + "..."
@@ -656,9 +654,8 @@ def build_html_gallery(subheadings, all_media, images_per_heading, keyword, intr
             alt = item.get("alt_text") or pretty_kw
 
             html_parts.append(
-                f'<figure style="margin-bottom:20px;text-align:center;">'
+                f'<figure class="wp-block-image size-full" style="margin-bottom:20px;text-align:center;">'
                 f'<img src="{url}" alt="{alt}" style="width:100%;border-radius:8px;" />'
-                f'<div style="margin-top:6px;color:#555;font-size:13px;">{alt}</div>'
                 f'</figure>'
             )
 
