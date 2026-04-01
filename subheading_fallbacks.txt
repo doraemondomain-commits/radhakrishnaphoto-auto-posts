@@ -1,0 +1,10 @@
+Beautiful,Divine,Romantic,Devotional,Peaceful
+HD,Stunning,Artistic,Traditional,Modern
+Vrindavan,Mathura,Temple,Festival,Flute
+Janmashtami,Holi,Diwali,Ekadashi,Purnima
+Painting,Digital Art,Watercolor,Sketch,Illustration
+Cute,Sweet,Lovely,Graceful,Blessed
+Wallpaper,Profile Picture,WhatsApp DP,Instagram,Pooja Room
+Golden,Colourful,Serene,Sacred,Vibrant
+Night,Morning,Sunset,Moonlight,Rain
+New,Latest,Trending,Popular,Unique
