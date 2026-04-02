@@ -850,11 +850,13 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
 
     log("Fetching WordPress categories...")
     categories = fetch_wp_categories() if not dry_run else [
-        {"id": 1, "name": "Hidden Face Girl Pic"},
-        {"id": 2, "name": "Sad Girl DP"},
-        {"id": 3, "name": "Attitude Girl DP"},
-        {"id": 4, "name": "Aesthetic Girl DP"},
-        {"id": 5, "name": "Trending"},
+        {"id": 1, "name": "Radha Krishna Images"},
+        {"id": 2, "name": "Radha Krishna Wallpaper"},
+        {"id": 3, "name": "Radha Krishna Dp"},
+        {"id": 4, "name": "Baby Krishna Images"},
+        {"id": 5, "name": "Radha Rani"},
+        {"id": 6, "name": "Radha Krishna Drawing"},
+        {"id": 7, "name": "Radha Krishna Photo"},
     ]
 
     if not categories:
@@ -890,7 +892,7 @@ def run(posts_to_create=POSTS_PER_RUN, dry_run=False):
             return
     else:
         all_media = [
-            {"id": i, "source_url": f"https://unityimage.com/wp-content/img{i}.jpg", "alt_text": "girl dp"}
+            {"id": i, "source_url": f"https://radhakrishnaphoto.in/wp-content/img{i}.jpg", "alt_text": "radha krishna"}
             for i in range(1, 500)
         ]
 
